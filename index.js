@@ -13,16 +13,47 @@ console.log("Environment Variables:", {
   JWT_SECRET: process.env.JWT_SECRET
 });
 
-const allowedOrigins = [
+const allowedOrigins = new Set([
   process.env.FRONTEND_URL,
   'http://localhost:3000',
   'http://127.0.0.1:3000'
-].filter(Boolean);
+].filter(Boolean));
 
+// CORS with dynamic origin check
 app.use(cors({
-  origin: allowedOrigins,
-  credentials: true
+  origin: function (origin, callback) {
+    // allow requests with no origin (like mobile apps or curl)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.has(origin)) {
+      return callback(null, true);
+    } else {
+      return callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  optionsSuccessStatus: 200
 }));
+
+// Log and Preflight handler - respond to OPTIONS requests for all routes
+app.use((req, res, next) => {
+  if (req.method === 'OPTIONS') {
+    console.log('[CORS] OPTIONS request for:', req.originalUrl, 'Origin:', req.headers.origin);
+  }
+  next();
+});
+
+// Preflight handler
+app.options('*', (req, res) => {
+  const origin = req.headers.origin;
+  if (allowedOrigins.has(origin) || !origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    return res.sendStatus(200);
+  }
+  return res.sendStatus(403);
+});
 
 
 mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://susantkumars18_db_user:susant1234@susant.ugb9iwz.mongodb.net/notes--multitenant');
