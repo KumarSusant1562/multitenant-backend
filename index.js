@@ -13,50 +13,52 @@ console.log("Environment Variables:", {
   JWT_SECRET: process.env.JWT_SECRET
 });
 
-const allowedOrigins = new Set([
-  process.env.FRONTEND_URL,
-  'http://localhost:3000',
-  'http://127.0.0.1:3000'
-].filter(Boolean));
-
-// CORS with dynamic origin check
+// TEMPORARY: Allow requests from any origin by reflecting the request origin.
+// This is for debugging/development so the browser preflight will succeed.
+// IMPORTANT: revert to a stricter origin check before production.
 app.use(cors({
-  origin: function (origin, callback) {
-    // allow requests with no origin (like mobile apps or curl)
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.has(origin)) {
-      return callback(null, true);
-    } else {
-      return callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: true, // reflect request origin
   credentials: true,
   optionsSuccessStatus: 200
 }));
 
-// Log and Preflight handler - respond to OPTIONS requests for all routes
 app.use((req, res, next) => {
   if (req.method === 'OPTIONS') {
-    console.log('[CORS] OPTIONS request for:', req.originalUrl, 'Origin:', req.headers.origin);
+    console.log('[CORS TEST] OPTIONS request for:', req.originalUrl, 'Origin:', req.headers.origin);
   }
   next();
 });
 
-// Preflight handler
-app.options('*', (req, res) => {
-  const origin = req.headers.origin;
-  if (allowedOrigins.has(origin) || !origin) {
-    res.setHeader('Access-Control-Allow-Origin', origin || '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-    return res.sendStatus(200);
-  }
-  return res.sendStatus(403);
+
+mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://susantkumars18_db_user:susant1234@susant.ugb9iwz.mongodb.net/notes--multitenant', {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+}).catch(err => {
+  console.error('[MONGODB] Initial connection error:', err && err.message ? err.message : err);
 });
 
-
-mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://susantkumars18_db_user:susant1234@susant.ugb9iwz.mongodb.net/notes--multitenant');
+// Log connection status and verify presence of seed data (counts)
+const mongooseConnection = mongoose.connection;
+mongooseConnection.on('connected', async () => {
+  try {
+    console.log('[MONGODB] Connected to', mongooseConnection.name || process.env.MONGODB_URI);
+    // attempt to require models and print counts if available
+    try {
+      const Tenant = require('./models/Tenant');
+      const User = require('./models/User');
+      const tenantsCount = await Tenant.countDocuments();
+      const usersCount = await User.countDocuments();
+      console.log(`[MONGODB] Tenants: ${tenantsCount}, Users: ${usersCount}`);
+    } catch (errInner) {
+      console.warn('[MONGODB] Could not load models to count documents:', errInner && errInner.message);
+    }
+  } catch (err) {
+    console.error('[MONGODB] on connected handler error:', err && err.message ? err.message : err);
+  }
+});
+mongooseConnection.on('error', (err) => {
+  console.error('[MONGODB] Connection error:', err && err.message ? err.message : err);
+});
 
 
 app.use('/', require('./routes/auth'));
